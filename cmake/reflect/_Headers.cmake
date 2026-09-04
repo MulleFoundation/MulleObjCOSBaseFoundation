@@ -13,6 +13,8 @@ endif()
 set( INCLUDE_DIRS
 src/reflect
 src/generic
+src/Categories
+src/Functions
 src
 )
 
@@ -20,8 +22,8 @@ src
 # contents selected with patternfile ??-header--private-generated-headers
 #
 set( PRIVATE_GENERATED_HEADERS
-src/reflect/_MulleObjCOSFoundation-import-private.h
-src/reflect/_MulleObjCOSFoundation-include-private.h
+src/reflect/_MulleObjCOSBaseFoundation-import-private.h
+src/reflect/_MulleObjCOSBaseFoundation-include-private.h
 )
 
 #
@@ -33,13 +35,28 @@ src/generic/include-private.h
 )
 
 #
+# contents selected with patternfile ??-header--private-headers
+#
+set( PRIVATE_HEADERS
+src/Categories/NSArray+OSBase-Private.h
+src/Categories/NSDate+OSBase-Private.h
+src/Categories/NSDictionary+OSBase-Private.h
+src/Functions/NSPageAllocation-Private.h
+src/NSBundle-Private.h
+src/NSFileManager-Private.h
+src/NSPathUtilities+OSBase-Private.h
+src/NSRunLoop-Private.h
+src/NSTask-Private.h
+)
+
+#
 # contents selected with patternfile ??-header--public-generated-headers
 #
 set( PUBLIC_GENERATED_HEADERS
-src/reflect/_MulleObjCOSFoundation-export.h
-src/reflect/_MulleObjCOSFoundation-import.h
-src/reflect/_MulleObjCOSFoundation-include.h
-src/reflect/_MulleObjCOSFoundation-provide.h
+src/reflect/_MulleObjCOSBaseFoundation-export.h
+src/reflect/_MulleObjCOSBaseFoundation-import.h
+src/reflect/_MulleObjCOSBaseFoundation-include.h
+src/reflect/_MulleObjCOSBaseFoundation-provide.h
 )
 
 #
@@ -54,7 +71,29 @@ src/generic/include.h
 # contents selected with patternfile ??-header--public-headers
 #
 set( PUBLIC_HEADERS
-src/MulleObjCDeps+MulleObjCOSFoundation.h
-src/MulleObjCOSFoundation.h
+src/Categories/NSArray+OSBase.h
+src/Categories/NSCalendarDate+NSUserDefaults.h
+src/Categories/NSData+OSBase.h
+src/Categories/NSDictionary+OSBase.h
+src/Categories/NSString+CString.h
+src/Categories/NSString+OSBase.h
+src/Functions/NSLog.h
+src/Functions/NSPageAllocation.h
+src/Functions/NSPathUtilities.h
+src/MulleObjCOSBaseFoundation.h
+src/NSBundle.h
+src/NSData+MulleMemoryMapping.h
+src/NSDirectoryEnumerator.h
+src/NSFileHandle+NSRunLoop.h
+src/NSFileHandle.h
+src/NSFileManager.h
+src/NSObject+NSRunLoop.h
+src/NSPipe.h
+src/NSProcessInfo.h
+src/NSRunLoop.h
+src/NSTask+System.h
+src/NSTask.h
+src/NSTimer+NSRunLoop.h
+src/NSUserDefaults.h
 )
 

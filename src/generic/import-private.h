@@ -2,7 +2,7 @@
 //  import-private.h
 //  MulleObjCOSFoundation
 //
-//  Copyright (c) 2022 Nat! - Mulle kybernetiK.
+//  Copyright (c) 2020 Nat! - Mulle kybernetiK.
 //  All rights reserved.
 //
 //
@@ -32,8 +32,8 @@
 //  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 //  POSSIBILITY OF SUCH DAMAGE.
 //
-#ifndef mulle_objc_osfoundation_import_private_h__
-#define mulle_objc_osfoundation_import_private_h__
+#ifndef mulle_objc_osbase_foundation_import_private_h__
+#define mulle_objc_osbase_foundation_import_private_h__
 
 /* This is a central include file to not expose includes to consumers of
    this library. It must not be imported by .h files, but by .m and
@@ -55,7 +55,7 @@
    Here the prefix is harmless and serves disambiguation. If you have no
    sourcetree, then you don't need it.
  */
-#import "_MulleObjCOSFoundation-import-private.h"
+#import "_MulleObjCOSBaseFoundation-import-private.h"
 
 /* You can add some more include statements here */
 

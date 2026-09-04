@@ -11,12 +11,37 @@ endif()
 # contents selected with patternfile ??-source--sources
 #
 set( SOURCES
-src/MulleObjCOSFoundation.m
+src/Categories/NSArray+OSBase-Private.m
+src/Categories/NSArray+OSBase.m
+src/Categories/NSCalendarDate+NSUserDefaults.m
+src/Categories/NSConditionLock+NSString.m
+src/Categories/NSCondition+NSString.m
+src/Categories/NSData+OSBase.m
+src/Categories/NSDictionary+OSBase-Private.m
+src/Categories/NSDictionary+OSBase.m
+src/Categories/NSString+CString.m
+src/Categories/NSString+OSBase.m
+src/Functions/NSPageAllocation.m
+src/Functions/NSPathUtilities.m
+src/NSBundle.m
+src/NSData+MulleMemoryMapping.m
+src/NSDirectoryEnumerator.m
+src/NSFileHandle+NSRunLoop.m
+src/NSFileHandle.m
+src/NSFileManager.m
+src/NSObject+NSRunLoop.m
+src/NSPipe.m
+src/NSProcessInfo.m
+src/NSRunLoop.m
+src/NSTask+System.m
+src/NSTask.m
+src/NSTimer+NSRunLoop.m
+src/NSUserDefaults.m
 )
 
 #
 # contents selected with patternfile ??-source--stage2-sources
 #
 set( STAGE2_SOURCES
-src/MulleObjCDeps+MulleObjCOSFoundation.m
+src/MulleObjCDeps+MulleObjCOSBaseFoundation.m
 )

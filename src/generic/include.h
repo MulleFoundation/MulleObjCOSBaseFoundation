@@ -2,7 +2,7 @@
 //  include.h
 //  MulleObjCOSFoundation
 //
-//  Copyright (c) 2022 Nat! - Mulle kybernetiK.
+//  Copyright (c) 2020 Nat! - Mulle kybernetiK.
 //  All rights reserved.
 //
 //
@@ -32,8 +32,8 @@
 //  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
 //  POSSIBILITY OF SUCH DAMAGE.
 //
-#ifndef mulle_objc_osfoundation_include_h__
-#define mulle_objc_osfoundation_include_h__
+#ifndef mulle_objc_osbase_foundation_include_h__
+#define mulle_objc_osbase_foundation_include_h__
 
 /* This is a central include file to keep dependencies out of the library
    C files. It is usally included by .h files only.
@@ -42,7 +42,7 @@
    be moved to other projects and don't need to be edited. Also less typing...
 
    Therefore it is important that this file is called "include.h" and
-   not "MulleObjCOSFoundation-include.h" to keep the #include statements in the
+   not "MulleObjCOSBaseFoundation-include.h" to keep the #include statements in the
    library code uniform.
 
    The C-compiler will pick up the nearest one.
@@ -53,19 +53,21 @@
    sourcetree, then you don't need it.
  */
 
-#include "_MulleObjCOSFoundation-include.h"
+#include "_MulleObjCOSBaseFoundation-include.h"
 
-#ifdef MULLE_OBJC_OS_FOUNDATION_BUILD
-# define MULLE_OBJC_OS_FOUNDATION_GLOBAL    MULLE_C_GLOBAL
+#ifdef MULLE_OBJC_OS_BASE_FOUNDATION_BUILD
+# define MULLE_OBJC_OS_BASE_FOUNDATION_GLOBAL           MULLE_C_GLOBAL
+# define MULLE_OBJC_OS_BASE_FOUNDATION_GLOBAL_VAR       MULLE_C_GLOBAL_VAR
 #else
-# if defined( MULLE_OBJC_OS_FOUNDATION_INCLUDE_DYNAMIC) || (defined( MULLE_INCLUDE_DYNAMIC) && ! defined( MULLE_OBJC_OS_FOUNDATION_INCLUDE_STATIC))
-#  define MULLE_OBJC_OS_FOUNDATION_GLOBAL   MULLE_C_EXTERN_GLOBAL
+# if defined( MULLE_OBJC_OS_BASE_FOUNDATION_INCLUDE_DYNAMIC) || (defined( MULLE_INCLUDE_DYNAMIC) && ! defined( MULLE_OBJC_OS_BASE_FOUNDATION_INCLUDE_STATIC))
+#  define MULLE_OBJC_OS_BASE_FOUNDATION_GLOBAL          MULLE_C_EXTERN_GLOBAL
 # else
-#  define MULLE_OBJC_OS_FOUNDATION_GLOBAL   extern
+#  define MULLE_OBJC_OS_BASE_FOUNDATION_GLOBAL          extern
 # endif
+# define MULLE_OBJC_OS_BASE_FOUNDATION_GLOBAL_VAR
 #endif
 
-
 /* You can add some more include statements here */
+
 
 #endif
