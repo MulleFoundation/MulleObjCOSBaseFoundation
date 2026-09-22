@@ -57,6 +57,7 @@ enum
    NSArray       *_arguments;
    NSDictionary  *_environment;
    NSString      *_executablePath;
+   NSLock        *_lock;         // protects the lazy ivars above
 }
 
 

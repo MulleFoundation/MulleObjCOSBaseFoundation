@@ -34,6 +34,14 @@
 //
 #import "NSUserDefaults.h"
 
+// other files in this library
+#import "NSBundle.h"
+#import "NSProcessInfo.h"
+
+// std-c and dependencies
+#include <stdlib.h>
+
+
 MULLE_OBJC_OS_BASE_FOUNDATION_GLOBAL_VAR
 NSString          *NSGlobalDomain       = @"NSGlobalDomain";
 
@@ -46,6 +54,9 @@ NSString          *NSRegistrationDomain = @"NSRegistrationDomain";
 static NSString   *NSApplicationDomain  = @"NSApplicationDomain";
 
 
+static NSMutableDictionary   *applicationDomain( NSUserDefaults *self);
+
+
 @implementation NSUserDefaults
 
 + (NSUserDefaults *) standardUserDefaults
@@ -56,8 +67,15 @@ static NSString   *NSApplicationDomain  = @"NSApplicationDomain";
 
 - (instancetype) init
 {
+   _lock       = [NSLock new];
    _domains    = [NSMutableDictionary new];
    _searchList = [[NSMutableArray alloc] initWithObjects:NSApplicationDomain, nil];
+
+   // access to both is guarded by _lock
+   [_domains mulleSetThreadSafe:YES];
+   [_searchList mulleSetThreadSafe:YES];
+
+   [self _loadPersistentDomain:applicationDomain( self)];
 
    return( self);
 }
@@ -67,6 +85,7 @@ static NSString   *NSApplicationDomain  = @"NSApplicationDomain";
 {
    [_domains release];
    [_searchList release];
+   [_lock release];
    [super dealloc];
 }
 
@@ -79,17 +98,26 @@ static NSString   *NSApplicationDomain  = @"NSApplicationDomain";
 
    NSParameterAssert( [key isKindOfClass:[NSString class]]);
 
-   for( name in _searchList)
+   value = nil;
+   [_lock lock];
    {
-      domain = [_domains objectForKey:name];
-      value  = [domain objectForKey:key];
-      if( value)
-         return( value);
+      for( name in _searchList)
+      {
+         domain = [_domains objectForKey:name];
+         value  = [domain objectForKey:key];
+         if( value)
+         {
+            value = [[value retain] autorelease];
+            break;
+         }
+      }
    }
-   return( nil);
+   [_lock unlock];
+   return( value);
 }
 
 
+// caller must hold _lock (except during -init)
 static NSMutableDictionary   *applicationDomain( NSUserDefaults *self)
 {
    NSMutableDictionary   *domain;
@@ -98,6 +126,7 @@ static NSMutableDictionary   *applicationDomain( NSUserDefaults *self)
    if( ! domain)
    {
       domain = [NSMutableDictionary new];
+      [domain mulleSetThreadSafe:YES];  // guarded by _lock
       [self->_domains setObject:domain
                          forKey:NSApplicationDomain];
       [domain release];
@@ -111,8 +140,12 @@ static NSMutableDictionary   *applicationDomain( NSUserDefaults *self)
 {
    NSParameterAssert( [(NSObject *) key isKindOfClass:[NSString class]]);
 
-   [applicationDomain( self) setObject:value
-                               forKey:key];
+   [_lock lock];
+   {
+      [applicationDomain( self) setObject:value
+                                  forKey:key];
+   }
+   [_lock unlock];
 }
 
 
@@ -122,8 +155,12 @@ static NSMutableDictionary   *applicationDomain( NSUserDefaults *self)
 
    NSParameterAssert( [key isKindOfClass:[NSString class]]);
 
-   domain = [_domains objectForKey:NSApplicationDomain];
-   [domain removeObjectForKey:key];
+   [_lock lock];
+   {
+      domain = [_domains objectForKey:NSApplicationDomain];
+      [domain removeObjectForKey:key];
+   }
+   [_lock unlock];
 }
 
 
@@ -133,16 +170,21 @@ static NSMutableDictionary   *applicationDomain( NSUserDefaults *self)
 
    NSParameterAssert( [defaults isKindOfClass:[NSDictionary class]]);
 
-   dict = [_domains objectForKey:NSRegistrationDomain];
-   if( ! dict)
+   [_lock lock];
    {
-      dict = [NSMutableDictionary dictionary];
-      [_searchList addObject:NSRegistrationDomain];
-   }
-   [dict addEntriesFromDictionary:defaults];
+      dict = [_domains objectForKey:NSRegistrationDomain];
+      if( ! dict)
+      {
+         dict = [NSMutableDictionary dictionary];
+         [dict mulleSetThreadSafe:YES];  // guarded by _lock
+         [_searchList addObject:NSRegistrationDomain];
+      }
+      [dict addEntriesFromDictionary:defaults];
 
-   [_domains setObject:dict
-                 forKey:NSRegistrationDomain];
+      [_domains setObject:dict
+                    forKey:NSRegistrationDomain];
+   }
+   [_lock unlock];
 }
 
 
@@ -151,19 +193,95 @@ static NSMutableDictionary   *applicationDomain( NSUserDefaults *self)
    NSMutableDictionary   *dict;
    NSDictionary          *domain;
    NSString              *name;
+   NSUInteger            i;
 
-   dict  = [NSMutableDictionary dictionary];
-   for( name in _searchList)
+   dict = [NSMutableDictionary dictionary];
+
+   [_lock lock];
    {
-      domain = [_domains objectForKey:name];
-      [dict addEntriesFromDictionary:domain];
+      // walk from lowest to highest priority, so that higher priority
+      // domains override lower ones
+      i = [_searchList count];
+      while( i--)
+      {
+         name   = [_searchList objectAtIndex:i];
+         domain = [_domains objectForKey:name];
+         if( domain)
+            [dict addEntriesFromDictionary:domain];
+      }
    }
+   [_lock unlock];
+
    return( dict);
 }
 
 
 - (BOOL) synchronize
 {
+   BOOL   flag;
+
+   [_lock lock];
+   {
+      flag = [self _savePersistentDomain:[_domains objectForKey:NSApplicationDomain]];
+   }
+   [_lock unlock];
+
+   return( flag);
+}
+
+
++ (void) resetStandardUserDefaults
+{
+   NSUserDefaults   *defaults;
+
+   defaults = [self sharedInstance];
+
+   [defaults->_lock lock];
+   {
+      [defaults->_domains removeAllObjects];
+      [defaults->_searchList removeAllObjects];
+      [defaults->_searchList addObject:NSApplicationDomain];
+   }
+   [defaults->_lock unlock];
+}
+
+@end
+
+
+@implementation NSUserDefaults( Persistent)
+
+@dependency NSUserDefaults;
+
+
+- (NSString *) _defaultsIdentifier
+{
+   char       *s;
+   NSString   *identifier;
+
+   s = getenv( "MULLE_USER_DEFAULTS_ID");
+   if( s && *s)
+      return( [NSString stringWithUTF8String:s]);
+
+   identifier = [[NSBundle mainBundle] bundleIdentifier];
+   if( ! [identifier length])
+      identifier = [[NSProcessInfo processInfo] processName];
+   if( ! [identifier length])
+      identifier = @"mulle-objc";
+
+   return( identifier);
+}
+
+
+- (BOOL) _loadPersistentDomain:(NSMutableDictionary *) domain
+{
+   MULLE_C_UNUSED( domain);
+   return( NO);
+}
+
+
+- (BOOL) _savePersistentDomain:(NSDictionary *) domain
+{
+   MULLE_C_UNUSED( domain);
    return( NO);
 }
 
@@ -262,7 +380,7 @@ static id   objectValueOfSelectorForKey( NSUserDefaults *self, SEL sel, NSString
 - (void) setInteger:(NSInteger)value
              forKey:(NSString *) key
 {
-   [self setObject:[NSNumber numberWithDouble:value]
+   [self setObject:[NSNumber numberWithLongLong:(long long) value]
             forKey:key];
 }
 

@@ -148,6 +148,8 @@ enum _MulleObjCSeekMode
 - (unsigned long long) _seek:(unsigned long long) offset
                         mode:(enum _MulleObjCSeekMode) mode;
 
+- (void) _truncate:(unsigned long long) offset;
+
 @end
 
 

@@ -91,24 +91,26 @@
    NSString  *path;
 
    path = [_rootPath stringByAppendingPathComponent:_currentEnumerationRelativePath_];
-   return( [_manager fileSystemAttributesAtPath:path]);
+   return( [_manager fileAttributesAtPath:path
+                             traverseLink:YES]);
 }
 
 
 - (NSUInteger) level
 {
-   return( [[_inheritedPath componentsSeparatedByString:NSFilePathComponentSeparator] count]);
+   // the most recently returned object may come from a child enumerator
+   if( _child)
+      return( [_child level]);
+
+   // the directory that was passed to enumeratorAtPath: is level 0
+   return( [[_inheritedPath componentsSeparatedByString:NSFilePathComponentSeparator] count] + 1);
 }
 
 
-// The search is shallow and therefore does not return the contents of any
-// subdirectories. This returned array does not contain strings for the current
-// directory (“.”), parent directory (“..”), or resource forks (begin with “._”)
-// and does not traverse symbolic links.
-//
-// Expected output
-// Briefe/Bewerbung/Alternativ/lebenslauf.doc
-// Briefe/Bewerbung/Lebenslauf.doc
+// The search is deep and returns directories as well as files. This returned
+// array does not contain strings for the current directory ("."), parent
+// directory (".."), or resource forks (begin with "._") and does not traverse
+// symbolic links.
 //
 - (id) nextObject
 {
@@ -121,7 +123,6 @@
    if( ! _dir)
       return( nil);
 
-retry:
    if( _isDirectory && ! _child)
       _child = [[NSDirectoryEnumerator alloc] initWithFileManager:_manager
                                                          rootPath:_rootPath
@@ -165,6 +166,11 @@ retry_file:
    {
    case _MulleObjCIsMaybeADirectory :
       absolutePath = [_rootPath stringByAppendingPathComponent:filename];
+
+      // a symbolic link is returned, but not traversed
+      if( [_manager pathContentOfSymbolicLinkAtPath:absolutePath])
+         break;
+
       if( ! [_manager fileExistsAtPath:absolutePath
                            isDirectory:&is_dir2])
       {
@@ -174,13 +180,56 @@ retry_file:
       if( is_dir2)
       {
    case _MulleObjCIsADirectory :
+         // return the directory itself, descend on the next call
          _isDirectory = YES;
-         goto retry;
       }
    }
 
    _currentEnumerationRelativePath_ = _currentObjectRelativePath;
    return( _currentEnumerationRelativePath_);
+}
+
+
+// NSFastEnumeration is basically NSContainer, so count returns the total
+// number of objects this enumerator would produce. To not disturb the
+// receiver (which is stateful), count over a fresh enumerator instead.
+//
+- (NSUInteger) count
+{
+   NSDirectoryEnumerator   *enumerator;
+   NSUInteger              count;
+   id                      obj;
+
+   enumerator = [[NSDirectoryEnumerator alloc] initWithFileManager:_manager
+                                                          rootPath:_rootPath
+                                                     inheritedPath:_inheritedPath];
+   count = 0;
+   while( (obj = [enumerator nextObject]))
+      ++count;
+
+   [enumerator release];
+   return( count);
+}
+
+
+- (NSUInteger) countByEnumeratingWithState:(NSFastEnumerationState *) state
+                                   objects:(id *) objects
+                                     count:(NSUInteger) count
+{
+   NSUInteger   i;
+   id           obj;
+
+   state->itemsPtr     = objects;
+   state->mutationsPtr = &state->extra[ 0];
+
+   for( i = 0; i < count; ++i)
+   {
+      obj = [self nextObject];
+      if( ! obj)
+         break;
+      objects[ i] = obj;
+   }
+   return( i);
 }
 
 

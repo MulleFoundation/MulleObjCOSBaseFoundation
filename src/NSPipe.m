@@ -54,11 +54,7 @@
    [super dealloc];
 }
 
-
-+ (instancetype) pipe
-{
-   return( [[[self alloc] init] autorelease]);
-}
+@method_implementation +pipe = +instance;
 
 
 - (NSFileHandle *) fileHandleForReading

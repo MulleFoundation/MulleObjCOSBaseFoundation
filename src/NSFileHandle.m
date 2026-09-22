@@ -218,7 +218,7 @@ static NSData   *readDataOfLength( NSFileHandle *self,
    char            *start;
 
    if( ! length || (NSUIntegerAtomicGet( &self->_state) & NSFileHandleStateEOF))
-      return( nil);
+      return( [NSData data]);
 
    data  = [NSMutableData dataWithLength:length];
    start = [data mutableBytes];
@@ -320,6 +320,8 @@ static NSData   *readAllData( NSFileHandle *self, BOOL untilFullOrEOF)
 
 - (unsigned long long) seekToEndOfFile
 {
+   // seeking re-enables reading
+   NSUIntegerAtomicMaskedOr( &self->_state, ~NSFileHandleStateEOF, 0);
    return( [self _seek:0
                   mode:_MulleObjCSeekEnd]);
 }
@@ -327,6 +329,8 @@ static NSData   *readAllData( NSFileHandle *self, BOOL untilFullOrEOF)
 
 - (void) seekToFileOffset:(unsigned long long) offset
 {
+   // seeking re-enables reading
+   NSUIntegerAtomicMaskedOr( &self->_state, ~NSFileHandleStateEOF, 0);
    [self _seek:offset
           mode:_MulleObjCSeekSet];
 }
@@ -334,8 +338,12 @@ static NSData   *readAllData( NSFileHandle *self, BOOL untilFullOrEOF)
 
 - (void) truncateFileAtOffset:(unsigned long long) offset
 {
+   [self _truncate:offset];
+
+   // the file pointer is put at the new end of file, which re-enables reading
+   NSUIntegerAtomicMaskedOr( &self->_state, ~NSFileHandleStateEOF, 0);
    [self _seek:offset
-          mode:_MulleObjCSeekCur]; // TODO: check!
+          mode:_MulleObjCSeekSet];
 }
 
 

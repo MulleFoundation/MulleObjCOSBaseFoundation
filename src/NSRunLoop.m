@@ -35,6 +35,10 @@
 #import "NSRunLoop.h"
 
 #import "NSFileHandle.h"
+#import "NSRunLoop-Private.h"
+
+// other libraries of MulleObjCPosixFoundation
+#import <MulleObjC/NSDebug.h>
 
 #include <errno.h>
 #include <string.h>
@@ -474,8 +478,15 @@ static void
 static void
    MulleRunLoopModeRemoveTimer( struct MulleRunLoopMode *p, NSTimer *timer)
 {
+   NSUInteger   index;
+
    assert( p);
-   [p->timers removeObject:timer];
+
+   index = [p->timers indexOfObjectIdenticalTo:timer];
+   if( index == NSNotFound)
+      return;
+
+   [p->timers removeObjectAtIndex:index];
    _mulle_atomic_pointer_decrement( &p->nInputsTimersMessages);
 }
 
@@ -483,11 +494,17 @@ static void
 static void
    MulleRunLoopModeRemoveTimersInArray( struct MulleRunLoopMode *p, NSArray *array)
 {
-   NSInteger   n;
+   NSUInteger   after;
+   NSUInteger   before;
 
-   n = [p->timers count];
+   if( ! array)
+      return;
+
+   before = [p->timers count];
    [p->timers removeObjectsInArray:array];
-   _mulle_atomic_pointer_add( &p->nInputsTimersMessages, -n);
+   after  = [p->timers count];
+
+   _mulle_atomic_pointer_add( &p->nInputsTimersMessages, -(NSInteger) (before - after));
 }
 
 static void
@@ -820,11 +837,13 @@ static NSRunLoop   *runLoopForThread( NSThread *thread)
       if( ! [self runMode:NSDefaultRunLoopMode
                beforeDate:date])  // isn't this our date now ?
       {
-         mulle_fprintf( stderr, "runUntilDate pre-empts\n");
+         if( NSDebugEnabled)
+            mulle_fprintf( stderr, "runUntilDate pre-empts\n");
          break;
       }
       now = [NSDate timeIntervalSinceReferenceDate];
-      mulle_fprintf( stderr, "runUntilDate until: %.3f now: %.3f\n", now, until);
+      if( NSDebugEnabled)
+         mulle_fprintf( stderr, "runUntilDate until: %.3f now: %.3f\n", now, until);
    }
    while( now < until);
 }
@@ -854,6 +873,34 @@ static NSRunLoop   *runLoopForThread( NSThread *thread)
    }
    mulle_thread_mutex_unlock( &_lock);
    return( array);
+}
+
+
+- (void) _addObject:(NSObject <_NSFileDescriptor> *) handle
+            forMode:(NSRunLoopMode) modeName
+{
+   NSInteger                 fd;
+   struct MulleRunLoopMode   *mode;
+
+   if( ! handle || ! modeName)
+      return;
+
+   fd = [handle fileDescriptor];
+   if( fd < 0)
+      return;
+
+   mulle_thread_mutex_lock( &_lock);
+   {
+      mode = [self _mulleRunLoopModeForMode:modeName];
+
+      NSMapInsertKnownAbsent( _fileHandleTable, (void *) (intptr_t) fd, handle);
+      [self _addFileDescriptor:(int) fd
+                       forMode:mode];
+
+      // watching a file descriptor means the mode is not idle
+      _mulle_atomic_pointer_increment( &mode->nInputsTimersMessages);
+   }
+   mulle_thread_mutex_unlock( &_lock);
 }
 
 

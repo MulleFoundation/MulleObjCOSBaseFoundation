@@ -40,11 +40,12 @@
 // on Linux, its .config
 // on Windows its the registry
 //
-@interface NSUserDefaults : NSObject < MulleObjCSingleton>
+@interface NSUserDefaults : NSObject < MulleObjCSingleton, MulleObjCThreadSafe>
 
 {
    NSMutableArray        *_searchList;
    NSMutableDictionary   *_domains;
+   NSLock                *_lock;         // protects _searchList and _domains
 }
 
 + (NSUserDefaults *)  standardUserDefaults;
@@ -68,6 +69,20 @@
 @interface NSUserDefaults( Future) < MulleObjCFuture>
 
 + (void) resetStandardUserDefaults;
+
+@end
+
+
+//
+// Platform storage. The base class keeps everything in memory, the platform
+// categories load and save the application domain (registry, .config plist).
+//
+@interface NSUserDefaults( Persistent)
+
+- (NSString *) _defaultsIdentifier;
+
+- (BOOL) _loadPersistentDomain:(NSMutableDictionary *) domain;
+- (BOOL) _savePersistentDomain:(NSDictionary *) domain;
 
 @end
 

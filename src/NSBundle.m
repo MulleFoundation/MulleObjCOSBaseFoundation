@@ -60,9 +60,6 @@ MULLE_OBJC_OS_BASE_FOUNDATION_GLOBAL_VAR
 NSString   *NSBundleDidLoadNotification = @"NSBundleDidLoadNotification";
 
 
-#define BUNDLE_REGISTRATION_DEBUG
-
-
 @interface NSObject( _NS)
 
 - (BOOL) __isNSNull;
@@ -98,6 +95,10 @@ static inline void   SelfUnlock( void)
 + (void) initialize
 {
    Self._registeredBundleInfo = [NSMutableDictionary new];
+
+   // All access is guarded by Self._lock, so tell TAO that the container
+   // may be messaged from any thread (it has no real thread affinity).
+   [Self._registeredBundleInfo mulleSetThreadSafe:YES];
 }
 
 
@@ -106,9 +107,6 @@ static inline void   SelfUnlock( void)
 {
    @autoreleasepool
    {
-#ifdef BUNDLE_REGISTRATION_DEBUG
-      mulle_fprintf( stderr, "Releasing all registered bundles\n");
-#endif
       [Self._registeredBundleInfo autorelease];
       Self._registeredBundleInfo = nil;
    }
@@ -151,19 +149,9 @@ static NSBundle  *get_or_register_bundle( NSBundle *bundle, NSString *path)
       {
          [Self._registeredBundleInfo setObject:bundle
                                         forKey:path];
-#ifdef BUNDLE_REGISTRATION_DEBUG
-         mulle_fprintf( stderr, "Added bundle %p for path %@\n", bundle, path);
-#endif
          if( NSDebugEnabled)
             mulle_fprintf( stderr, "Added Bundle %p for path \"%@\"", bundle, path);
          other = bundle;
-      }
-      else
-      {
-#ifdef BUNDLE_REGISTRATION_DEBUG
-         if( other)
-            mulle_fprintf( stderr, "Found bundle %p for path %@\n", other, path);
-#endif
       }
 
       other = [[other retain] autorelease];
@@ -190,9 +178,6 @@ static void   deregister_bundle( NSBundle *bundle, NSString *path)
       if( other == bundle)
       {
          [Self._registeredBundleInfo removeObjectForKey:path];
-#ifdef BUNDLE_REGISTRATION_DEBUG
-         mulle_fprintf( stderr, "Removed bundle %p for path %@\n", bundle, path);
-#endif
       }
    }
    SelfUnlock();
@@ -270,6 +255,12 @@ void       (*NSBundleDeregisterBundleWithPath)( NSBundle *bundle, NSString *path
 {
    NSBundle   *bundle;
 
+   if( ! [fullPath length])
+   {
+      [self release];
+      return( nil);
+   }
+
    if( ! [fullPath isAbsolutePath])
       MulleObjCThrowInvalidArgumentException( @"\"%@\" is not an absolute path", fullPath);
 
@@ -286,9 +277,6 @@ void       (*NSBundleDeregisterBundleWithPath)( NSBundle *bundle, NSString *path
       bundle = (*NSBundleGetOrRegisterBundleWithPath)( self, _path);
       if( bundle == self)
       {
-#ifdef BUNDLE_REGISTRATION_DEBUG
-         mulle_fprintf( stderr, "Bundle %p lives\n", self);
-#endif
          return( self);
       }
    }
@@ -321,10 +309,6 @@ void       (*NSBundleDeregisterBundleWithPath)( NSBundle *bundle, NSString *path
 
 - (void) dealloc
 {
-#ifdef BUNDLE_REGISTRATION_DEBUG
-   mulle_fprintf( stderr, "Bundle %p dies\n", self);
-#endif
-
    [_path release];
    MulleObjCAtomicIdRelease( &_executablePath);
    MulleObjCAtomicIdRelease( &_resourcePath);
@@ -746,8 +730,8 @@ void       (*NSBundleDeregisterBundleWithPath)( NSBundle *bundle, NSString *path
 
 - (BOOL) mulleContainsAddress:(void *) address
 {
-   return( (uintptr_t) _startAddress >= (uintptr_t)  address &&
-           (uintptr_t) _endAddress <= (uintptr_t)  address);
+   return( (uintptr_t) _startAddress <= (uintptr_t) address &&
+           (uintptr_t) address < (uintptr_t) _endAddress);
 }
 
 
@@ -891,6 +875,10 @@ static id  readDictionaryOrNull( NSBundle *self, NSString *name, NSString *type)
 
          _languageCode          = [languageCode copy];
          _localizedStringTables = [NSMutableDictionary new];
+
+         // All access is guarded by _lock, so tell TAO that the container
+         // may be messaged from any thread (it has no real thread affinity).
+         [_localizedStringTables mulleSetThreadSafe:YES];
       }
 
       table = [_localizedStringTables objectForKey:tableName];

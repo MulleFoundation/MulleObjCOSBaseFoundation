@@ -1,4 +1,5 @@
-      { @selector( MulleObjCDeps), @selector( MulleFoundationBase) },      // 3c20656f;MulleObjCDeps;efab19ea;MulleFoundationBase
+      { @selector( MulleObjCDeps), @selector( MulleObjCPlistFoundation) },      // 3c20656f;MulleObjCDeps;e8aa8d92;MulleObjCPlistFoundation
+      { @selector( MulleObjCDeps), @selector( MulleObjCStandardFoundation) },      // 3c20656f;MulleObjCDeps;ed704a42;MulleObjCStandardFoundation
       { @selector( NSArray), @selector( OSBase) },      // 233490fe;NSArray;b8ece9a7;OSBase
       { @selector( NSArray), @selector( OSBase_Private) },      // 233490fe;NSArray;7cf4cba6;OSBase_Private
       { @selector( NSBundle), MULLE_OBJC_NO_CATEGORYID },      // c2f95c66;NSBundle;;
@@ -28,6 +29,7 @@
       { @selector( NSTask), MULLE_OBJC_NO_CATEGORYID },      // 90ec29ba;NSTask;;
       { @selector( NSTimer), @selector( NSRunLoop) },      // 37c6e578;NSTimer;e3bb595b;NSRunLoop
       { @selector( NSUserDefaults), @selector( Conveniences) },      // 272481b3;NSUserDefaults;1d30cd9c;Conveniences
+      { @selector( NSUserDefaults), @selector( Persistent) },      // 272481b3;NSUserDefaults;9d8a5e0b;Persistent
       { @selector( NSUserDefaults), MULLE_OBJC_NO_CATEGORYID },      // 272481b3;NSUserDefaults;;
       { @selector( _MulleObjCMemoryMappedData), MULLE_OBJC_NO_CATEGORYID },      // 37ad385b;_MulleObjCMemoryMappedData;;
       { @selector( _NSPathUtilityVectorTable_Loader), MULLE_OBJC_NO_CATEGORYID },      // ad89cd30;_NSPathUtilityVectorTable_Loader;;

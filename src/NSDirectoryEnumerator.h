@@ -38,7 +38,7 @@
 @class NSFileManager;
 
 
-@interface NSDirectoryEnumerator : NSEnumerator < NSEnumerator>
+@interface NSDirectoryEnumerator : NSEnumerator < NSEnumerator, NSFastEnumeration >
 {
    NSFileManager     *_manager;
    NSString          *_rootPath;
@@ -54,8 +54,10 @@
 
 - (NSDictionary *) directoryAttributes;
 - (NSDictionary *) fileAttributes;
+- (NSUInteger) count;
 - (NSUInteger) level;
 - (void) skipDescendants;
+- (void) skipDescendents;
 
 @end
 

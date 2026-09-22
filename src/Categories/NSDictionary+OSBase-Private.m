@@ -47,6 +47,7 @@
 
 + (instancetype) _newWithEnvironment:(char **) env
 {
+   NSDictionary          *dict;
    NSMutableDictionary   *dictionary;
    NSString              *key;
    NSString              *value;
@@ -89,6 +90,10 @@
                             forCopiedKey:key];
    }
 
-   return( dictionary);
+   // the environment is conceptually immutable, return a thread-safe
+   // immutable copy instead of the mutable builder
+   dict = [dictionary copy];
+   [dictionary release];
+   return( dict);
 }
 @end

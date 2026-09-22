@@ -175,9 +175,14 @@ shouldProceedAfterError:(NSError *)error
 - (NSDictionary *) fileAttributesAtPath:(NSString *) path
                            traverseLink:(BOOL) flag;
 
+- (NSDictionary *) attributesOfItemAtPath:(NSString *) path
+                                    error:(NSError **) error;
+
+- (NSDictionary *) attributesOfFileSystemForPath:(NSString *) path
+                                           error:(NSError **) error;
+
 // TODO: why u no nem sis setFileSystemAttributesAtPath: ??
 // MEMO: some stuff is missing like:
-// - attributesOfItemAtPath:error:
 // - attributesOfFileSystemForPath:error:
 //
 - (BOOL) setAttributes:(NSDictionary *) attributes
@@ -219,6 +224,10 @@ MULLE_OBJC_OS_BASE_FOUNDATION_GLOBAL NSString   *NSFileGroupOwnerAccountName;
 MULLE_OBJC_OS_BASE_FOUNDATION_GLOBAL NSString   *NSFilePosixPermissions;
 MULLE_OBJC_OS_BASE_FOUNDATION_GLOBAL NSString   *NSFileSystemNumber;
 MULLE_OBJC_OS_BASE_FOUNDATION_GLOBAL NSString   *NSFileSystemFileNumber;
+MULLE_OBJC_OS_BASE_FOUNDATION_GLOBAL NSString   *NSFileSystemFreeNodes;
+MULLE_OBJC_OS_BASE_FOUNDATION_GLOBAL NSString   *NSFileSystemFreeSize;
+MULLE_OBJC_OS_BASE_FOUNDATION_GLOBAL NSString   *NSFileSystemNodes;
+MULLE_OBJC_OS_BASE_FOUNDATION_GLOBAL NSString   *NSFileSystemSize;
 MULLE_OBJC_OS_BASE_FOUNDATION_GLOBAL NSString   *NSFileExtensionHidden;
 MULLE_OBJC_OS_BASE_FOUNDATION_GLOBAL NSString   *NSFileHFSCreatorCode;
 MULLE_OBJC_OS_BASE_FOUNDATION_GLOBAL NSString   *NSFileHFSTypeCode;

@@ -55,6 +55,9 @@ struct _MulleObjCSharedLibrary
 + (NSString *) _mainBundlePathForExecutablePath:(NSString *) executablePath;
 + (NSString *) _bundlePathForExecutablePath:(NSString *) executablePath;
 
++ (NSBundle *) _bundleWithPath:(NSString *) path
+                executablePath:(NSString *) executablePath;
+
 - (id) __mulleInitWithPath:(NSString *) fullPath
     sharedLibraryInfo:(struct _MulleObjCSharedLibrary *) libInfo;
 - (id) _mulleInitWithPath:(NSString *) fullPath

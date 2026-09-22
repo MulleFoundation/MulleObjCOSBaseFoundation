@@ -85,6 +85,14 @@ NSString   *NSFileSystemFileNumber      = @"NSFileSystemFileNumber";
 MULLE_OBJC_OS_BASE_FOUNDATION_GLOBAL_VAR
 NSString   *NSFileSystemNumber          = @"NSFileSystemNumber";
 MULLE_OBJC_OS_BASE_FOUNDATION_GLOBAL_VAR
+NSString   *NSFileSystemFreeNodes       = @"NSFileSystemFreeNodes";
+MULLE_OBJC_OS_BASE_FOUNDATION_GLOBAL_VAR
+NSString   *NSFileSystemFreeSize        = @"NSFileSystemFreeSize";
+MULLE_OBJC_OS_BASE_FOUNDATION_GLOBAL_VAR
+NSString   *NSFileSystemNodes           = @"NSFileSystemNodes";
+MULLE_OBJC_OS_BASE_FOUNDATION_GLOBAL_VAR
+NSString   *NSFileSystemSize            = @"NSFileSystemSize";
+MULLE_OBJC_OS_BASE_FOUNDATION_GLOBAL_VAR
 NSString   *NSFileType                  = @"NSFileType";
 
 MULLE_OBJC_OS_BASE_FOUNDATION_GLOBAL_VAR
@@ -165,12 +173,58 @@ NSString   *NSFileTypeUnknown          = @"NSFileTypeUnknown";
 - (BOOL) contentsEqualAtPath:(NSString *) path1
                      andPath:(NSString *) path2
 {
-   NSData  *data1;
-   NSData  *data2;
+   NSArray     *names1;
+   NSArray     *names2;
+   NSData      *data1;
+   NSData      *data2;
+   NSString    *link1;
+   NSString    *link2;
+   NSString    *name;
+   NSString    *subpath1;
+   NSString    *subpath2;
+   BOOL        isDirectory1;
+   BOOL        isDirectory2;
 
-   data1 = [NSData dataWithContentsOfFile:path1];
-   data2 = [NSData dataWithContentsOfFile:path2];
-   return( [data1 isEqualToData:data2]);
+   // symbolic links are compared as links, not traversed
+   link1 = [self pathContentOfSymbolicLinkAtPath:path1];
+   link2 = [self pathContentOfSymbolicLinkAtPath:path2];
+   if( link1 || link2)
+      return( link1 && link2 && [link1 isEqualToString:link2]);
+
+   if( ! [self fileExistsAtPath:path1
+                    isDirectory:&isDirectory1])
+      return( NO);
+   if( ! [self fileExistsAtPath:path2
+                    isDirectory:&isDirectory2])
+      return( NO);
+
+   if( isDirectory1 != isDirectory2)
+      return( NO);
+
+   if( ! isDirectory1)
+   {
+      data1 = [NSData dataWithContentsOfFile:path1];
+      data2 = [NSData dataWithContentsOfFile:path2];
+      return( [data1 isEqualToData:data2]);
+   }
+
+   names1 = [self directoryContentsAtPath:path1];
+   names2 = [self directoryContentsAtPath:path2];
+   names1 = [names1 sortedArrayUsingSelector:@selector( compare:)];
+   names2 = [names2 sortedArrayUsingSelector:@selector( compare:)];
+   if( ! [names1 isEqualToArray:names2])
+      return( NO);
+
+   for( name in names1)
+   {
+      subpath1 = [path1 stringByAppendingPathComponent:name];
+      subpath2 = [path2 stringByAppendingPathComponent:name];
+      if( ! [self contentsEqualAtPath:subpath1
+                              andPath:subpath2])
+         return( NO);
+   }
+
+   return( YES);
 }
 
 
@@ -203,6 +257,16 @@ NSString   *NSFileTypeUnknown          = @"NSFileTypeUnknown";
    BOOL   flag;
    BOOL   isDirectory;
 
+   // a symbolic link is removed as a link, not as its destination
+   if( [self pathContentOfSymbolicLinkAtPath:path])
+   {
+      if( [_delegate respondsToSelector:@selector( fileManager:shouldRemoveItemAtPath:)])
+         if( ! [_delegate fileManager:self
+             shouldRemoveItemAtPath:path])
+            return( NO);
+      return( [self _removeFileAtPath:path]);
+   }
+
    if( ! [self fileExistsAtPath:path
                     isDirectory:&isDirectory])
       return( NO);
@@ -224,13 +288,12 @@ NSString   *NSFileTypeUnknown          = @"NSFileTypeUnknown";
 - (BOOL) removeItemAtPath:(NSString *) path
                     error:(NSError **) error
 {
-   if( ! [self removeItemAtPath:path] && error)
-   {
-      *error = [NSError mulleExtract];
-      return( NO);
-   }
+   if( [self removeItemAtPath:path])
+      return( YES);
 
-   return( YES);
+   if( error)
+      *error = [NSError mulleExtract];
+   return( NO);
 }
 
 

@@ -1,0 +1,15 @@
+pathComponents</tmp/scratch.tiff>=</><tmp><scratch.tiff>
+pathComponents</>=</>
+pathComponents<>=
+pathComponents</a/b/>=</><a><b></>
+pathComponents<a/>=<a></>
+pathComponents<a//b>=<a><b>
+pathComponents<//a/b>=</><a><b>
+pathComponents<./x>=<.><x>
+pathComponents<scratch>=<scratch>
+pathWithComponents</,tmp>=</tmp>
+pathWithComponents<a,b>=<a/b>
+pathWithComponents<a,>=<a/>
+pathWithComponents<a,,b>=<a//b>
+pathWithComponents<,tmp>=</tmp>
+pathWithComponents</,>=</>

@@ -52,6 +52,8 @@
 
 - (void) _addObject:(NSObject <_NSFileDescriptor> *) handle
             forMode:(NSRunLoopMode) mode;
+- (void) _addFileDescriptor:(int) fd
+                    forMode:(struct MulleRunLoopMode *) mode;
 - (void) _fireTimersOfRunLoopMode:(struct MulleRunLoopMode *) mode
                      timeInterval:(NSTimeInterval) timeInterval;
 - (void) _removeTimer:(NSTimer *) timer;

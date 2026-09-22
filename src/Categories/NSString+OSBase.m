@@ -58,7 +58,32 @@
 // use string subclass that keeps components separate
 + (instancetype) pathWithComponents:(NSArray *) components
 {
-   return( [components componentsJoinedByString:NSFilePathComponentSeparator]);
+   NSMutableString  *s;
+   NSString         *component;
+   NSUInteger       i, n;
+
+   n = [components count];
+   if( ! n)
+      return( @"");
+
+   s = [NSMutableString stringWithString:[components objectAtIndex:0]];
+
+   for( i = 1; i < n; i++)
+   {
+      component = [components objectAtIndex:i];
+
+      // the root separator is a component of its own, don't double it
+      if( i == 1 && [s isEqualToString:NSFilePathComponentSeparator])
+         [s appendString:component];
+      else
+      {
+         // empty components are not cleaned up, they create the separator
+         [s appendString:NSFilePathComponentSeparator];
+         [s appendString:component];
+      }
+   }
+
+   return( s);
 }
 
 ///
@@ -82,7 +107,7 @@
 {
    NSString  *s;
 
-   s = [components componentsJoinedByString:NSFilePathComponentSeparator];
+   s = [NSString pathWithComponents:components];
    [self autorelease];
    [s retain];
 
@@ -92,7 +117,41 @@
 
 - (NSArray *) pathComponents
 {
-   return( [self componentsSeparatedByString:NSFilePathComponentSeparator]);
+   NSArray          *components;
+   NSMutableArray   *result;
+   NSString         *component;
+   NSUInteger       i, n;
+   NSUInteger       len;
+
+   len = [self length];
+   if( ! len)
+      return( [NSArray array]);
+
+   result     = [NSMutableArray array];
+   components = [self componentsSeparatedByString:NSFilePathComponentSeparator];
+   n          = [components count];
+
+   // the separator at the front is a component of its own
+   if( [self hasPrefix:NSFilePathComponentSeparator])
+      [result addObject:NSFilePathComponentSeparator];
+
+   for( i = 0; i < n; i++)
+   {
+      component = [components objectAtIndex:i];
+
+      // empty components come from consecutive or trailing separators
+      if( ! [component length])
+      {
+         // the separator at the end is a component of its own
+         if( i == n - 1 && len > 1 && [self hasSuffix:NSFilePathComponentSeparator])
+            [result addObject:NSFilePathComponentSeparator];
+         continue;
+      }
+
+      [result addObject:component];
+   }
+
+   return( result);
 }
 
 
@@ -224,7 +283,15 @@
 
       best = s;
       while( expanded = [manager pathContentOfSymbolicLinkAtPath:best])
+      {
+         //
+         // a link target is frequently relative to the directory of the link,
+         // not to the current directory: resolve it before following on
+         //
+         if( ! [expanded isAbsolutePath])
+            expanded = [[best stringByDeletingLastPathComponent] stringByAppendingPathComponent:expanded];
          best = expanded;
+      }
       if( best == s)
          continue;
       [s setString:best];
@@ -246,22 +313,28 @@ static NSRange  getLastPathComponentRange( NSString *self)
 {
    NSRange      range;
    NSUInteger   len;
+   NSUInteger   end;
 
-   len   = [self length];
+   len = [self length];
+   if( ! len)
+      return( NSRangeMake( 0, 0));
+
+   // multiple path separators at the end are stripped
+   end = len;
+   while( end && [self characterAtIndex:end - 1] == (unichar) '/')
+      end--;
+
+   // nothing but separators: the root
+   if( ! end)
+      return( NSRangeMake( 0, 1));
+
    range = [self rangeOfString:NSFilePathComponentSeparator
-                       options:NSLiteralSearch|NSBackwardsSearch];
-   // if found trailing '/', skip it (but only once)
-   if( range.location == len - 1)
-      range = [self rangeOfString:NSFilePathComponentSeparator
-                          options:NSBackwardsSearch
-                            range:NSRangeMake( 0, len - 1)];
+                       options:NSLiteralSearch|NSBackwardsSearch
+                         range:NSRangeMake( 0, end)];
+   if( ! range.length) // no separator at all
+      return( NSRangeMake( 0, end));
 
-   if( range.location == 0 || range.length == 0) // is root or just the file
-      return( NSRangeMake( 0, len));
-
-   // otherwise range it toge
-   range.location++;   // skip over '/'
-   return( NSRangeMake( range.location, len - range.location));
+   return( NSRangeMake( range.location + 1, end - range.location - 1));
 }
 
 
@@ -292,23 +365,36 @@ static NSRange  getPathExtensionRange( NSString *self)
    NSRange   range;
 
    range = getLastPathComponentRange( self);
-   if( ! range.length)
-      return( self);
-   return( [self substringFromIndex:range.location]);
+   return( [self substringWithRange:range]);
 }
 
 
 - (NSString *) stringByDeletingLastPathComponent
 {
-   NSRange   range;
+   NSRange      range;
+   NSUInteger   len;
+   NSUInteger   end;
 
-   range = getLastPathComponentRange( self);
-   if( ! range.length)
+   len = [self length];
+   if( ! len)
       return( self);
 
-   // skip over '/' if available
-   if( range.location)
-      --range.location;
+   end = len;
+   while( end && [self characterAtIndex:end - 1] == (unichar) '/')
+      end--;
+
+   if( ! end) // only separators, the root
+      return( NSFilePathComponentSeparator);
+
+   range = [self rangeOfString:NSFilePathComponentSeparator
+                       options:NSLiteralSearch|NSBackwardsSearch
+                         range:NSRangeMake( 0, end)];
+   if( ! range.length) // a single component, delete it all
+      return( @"");
+
+   if( ! range.location) // the component follows the leading separator
+      return( NSFilePathComponentSeparator);
+
    return( [self substringToIndex:range.location]);
 }
 
@@ -326,15 +412,27 @@ static NSRange  getPathExtensionRange( NSString *self)
 
 - (NSString *) stringByDeletingPathExtension
 {
-   NSRange   range;
+   NSRange      range;
+   NSString     *base;
+   NSUInteger   len;
+   NSUInteger   end;
 
-   range = getPathExtensionRange( self);
-   if( ! range.length)
+   len = [self length];
+   end = len;
+   // strip trailing path separators before checking for an extension
+   while( end && [self characterAtIndex:end - 1] == (unichar) '/')
+      end--;
+
+   if( ! end) // only separators, the root
       return( self);
 
-   NSCParameterAssert( range.location);
+   base  = [self substringToIndex:end];
+   range = getPathExtensionRange( base);
+   if( ! range.length)
+      return( base);
+
    // also snip off "dot"
-   return( [self substringToIndex:range.location - 1]);
+   return( [base substringToIndex:range.location - 1]);
 }
 
 

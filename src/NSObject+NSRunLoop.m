@@ -54,7 +54,7 @@
    runLoop = [NSRunLoop currentRunLoop];
    for( modeName in modes)
    {
-      timer = [[[NSTimer alloc] mulleInitWithRelativeTimeInterval:delay
+      timer = [[[NSTimer alloc] mulleInitWithFireTimeInterval:[NSDate timeIntervalSinceReferenceDate] + delay
                                                    repeatInterval:0.0
                                                            target:self
                                                         selector:selector
@@ -73,7 +73,7 @@
    NSTimer    *timer;
    NSRunLoop  *runLoop;
 
-   timer = [[[NSTimer alloc] mulleInitWithRelativeTimeInterval:delay
+   timer = [[[NSTimer alloc] mulleInitWithFireTimeInterval:[NSDate timeIntervalSinceReferenceDate] + delay
                                                 repeatInterval:0.0
                                                         target:self
                                                      selector:selector

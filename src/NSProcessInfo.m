@@ -42,6 +42,7 @@
 // other libraries of MulleObjCPosixFoundation
 
 // std-c and dependencies
+#include <time.h>
 
 
 @implementation NSProcessInfo
@@ -52,11 +53,21 @@
 }
 
 
+- (instancetype) init
+{
+   // recursive, because some platform lazy initializers call back into
+   // other lazy accessors (e.g. FreeBSD's _executablePath -> arguments)
+   _lock = [NSRecursiveLock new];
+   return( self);
+}
+
+
 - (void) dealloc
 {
    [_arguments release];
    [_environment release];
    [_executablePath release];
+   [_lock release];
 
    [super dealloc];
 }
@@ -64,13 +75,46 @@
 
 - (NSArray *) arguments
 {
-   return( _arguments);
+   NSArray   *value;
+
+   [_lock lock];
+   value = [[_arguments retain] autorelease];
+   [_lock unlock];
+
+   return( value);
 }
 
 
 - (NSDictionary *) environment
 {
-   return( _environment);
+   NSDictionary   *value;
+
+   [_lock lock];
+   value = [[_environment retain] autorelease];
+   [_lock unlock];
+
+   return( value);
+}
+
+
+- (NSString *) globallyUniqueString
+{
+   static NSUIntegerAtomic   counter;
+   NSUInteger                old;
+   NSUInteger                value;
+
+   do
+   {
+      old   = NSUIntegerAtomicGet( &counter);
+      value = old + 1;
+   }
+   while( NSUIntegerAtomicUpdate( &counter, value) != old);
+
+   return( [NSString stringWithFormat:@"%@-%ld-%ld-%lu",
+                    [self hostName],
+                    (long) [self processIdentifier],
+                    (long) time( NULL),
+                    (unsigned long) value]);
 }
 
 @end
