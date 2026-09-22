@@ -407,6 +407,10 @@ static int   readFileHandleData( NSThread *thread, void *_info)
                                   ? NSTaskStandardOutputDataKey
                                   : NSTaskStandardErrorDataKey)];
 
+         // a missing or not-received stream is NSNull, treat as empty
+         if( ! [data[ i] isKindOfClass:[NSData class]])
+            data[ i] = [NSData data];
+
          //
          // remove single trailing linefeed, if this is inconvenient use
          // the data methods

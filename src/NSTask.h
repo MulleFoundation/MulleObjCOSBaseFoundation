@@ -64,6 +64,7 @@ typedef NSInteger   NSTaskTerminationReason;
    int           _pid;
    int           _status;
    int           _terminationStatus;
+   int           _waitStatus;    // POSIX raw waitpid status
    void          *_taskHandle;  // Windows process HANDLE
 }
 

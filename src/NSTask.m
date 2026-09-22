@@ -109,6 +109,9 @@
 
 - (void) setCurrentDirectoryPath:(NSString *) path
 {
+   if( path && ! [path isAbsolutePath])
+      MulleObjCThrowInvalidArgumentException( @"\"%@\" is not an absolute path", path);
+
    [_directoryPath autorelease];
    _directoryPath = [path copy];
 }
