@@ -3,7 +3,7 @@
    "version" : "0.29.0",
    "description" : "",
    "keywords" : [],
-   "license" : "UNLICENSED",
+   "license" : "BSD-3-Clause",
    "repo" : "MulleFoundation/MulleObjCOSBaseFoundation",
    "src" : [
       "src/Categories/NSArray+OSBase-Private.h",
