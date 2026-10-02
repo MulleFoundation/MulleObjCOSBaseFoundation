@@ -62,10 +62,9 @@ typedef NSInteger   NSTaskTerminationReason;
    id            _standardOutput;
 
    int           _pid;
-   int           _status;
+   int           _status;          // enum mulle_spawn_status, see NSTask-Private.h
    int           _terminationStatus;
-   int           _waitStatus;    // POSIX raw waitpid status
-   void          *_taskHandle;  // Windows process HANDLE
+   void          *_taskHandle;    // struct mulle_spawn_handle *, the child itself
 }
 
 
@@ -96,8 +95,6 @@ typedef NSInteger   NSTaskTerminationReason;
 
 
 @interface NSTask( Future) < MulleObjCFuture>
-
-+ (char **) _environment;
 
 - (BOOL) isRunning;
 

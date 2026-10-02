@@ -81,6 +81,6 @@
    "dependencies" : {
       "MulleFoundation/MulleObjCStandardFoundation": "*",
       "MulleFoundation/MulleObjCPlistFoundation": "*",
-      "mulle-objc/mulle-objc-list": "*"
+      "mulle-objc/mulle-objc-tools": "*"
    }
 }

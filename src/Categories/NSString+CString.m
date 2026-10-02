@@ -39,6 +39,37 @@
 // other files in this library
 
 // std-c and dependencies
+#import "import-private.h"
+#include <string.h>
+
+
+// Only a handful of codesets have a converter in this library (see
+// NSStringEncoding.h). Anything else answers UTF-8, where the lossy
+// conversion in -initWithCString:length: at least can not fail.
+//
+// ASCII is deliberately reported as UTF-8 as well: ASCII is a subset of
+// UTF-8, and since this library never calls setlocale() an unset LANG makes
+// the system report ASCII even though OS provided strings (file system
+// names for instance) are UTF-8 in practice. Answering ASCII here would
+// mangle or reject them.
+NSStringEncoding   mulle_cstring_encoding_for_codeset( char *codeset)
+{
+   if( ! codeset || ! *codeset)
+      return( NSUTF8StringEncoding);
+
+   if( ! strcmp( codeset, "UTF-8") || ! strcmp( codeset, "UTF8"))
+      return( NSUTF8StringEncoding);
+
+   if(    ! strcmp( codeset, "ISO-8859-1")
+       || ! strcmp( codeset, "ISO8859-1")
+       || ! strcmp( codeset, "ISO_8859-1")
+       || ! strcmp( codeset, "ISO8859_1")
+       || ! strcmp( codeset, "latin1")
+       || ! strcmp( codeset, "LATIN1"))
+      return( NSISOLatin1StringEncoding);
+
+   return( NSUTF8StringEncoding);
+}
 
 
 @implementation NSString (CString)
@@ -59,21 +90,50 @@
 }
 
 
+// A C string can contain bytes that are not valid in _cStringEncoding (the
+// monetary data of a legacy encoded locale like zh_CN.eucCN for instance, or
+// an arbitrary file system path on Linux). Decode it lossily instead of
+// raising, so that reading an OS provided string can not abort the process.
+// The conversion is a no-op for valid input.
 - (instancetype) initWithCString:(char *) s
                           length:(NSUInteger) len
 {
+   NSMutableData      *data;
+   NSStringEncoding   encoding;
+
+   if( ! s)
+      return( [self initWithBytes:s
+                           length:len
+                         encoding:[self _cStringEncoding]]);
+
+   encoding = [self _cStringEncoding];
+   // both share the UTF-8 validator, which is the one that can raise
+   if( encoding == NSUTF8StringEncoding || encoding == NSASCIIStringEncoding)
+   {
+      data = [NSMutableData dataWithBytes:s
+                                   length:len];
+      [data mulleReplaceInvalidCharactersWithASCIICharacter:'?'
+                                                   encoding:encoding];
+      return( [self initWithBytes:[data bytes]
+                           length:[data length]
+                         encoding:encoding]);
+   }
+
    return( [self initWithBytes:s
                         length:len
-                      encoding:[self _cStringEncoding]]);
+                      encoding:encoding]);
 }
-
 
 
 - (instancetype) initWithCString:(char *) s
 {
-   return( [self initWithBytes:s
-                        length:-1
-                      encoding:[self _cStringEncoding]]);
+   if( ! s)
+      return( [self initWithBytes:s
+                           length:-1
+                         encoding:[self _cStringEncoding]]);
+
+   return( [self initWithCString:s
+                          length:strlen( s)]);
 }
 
 

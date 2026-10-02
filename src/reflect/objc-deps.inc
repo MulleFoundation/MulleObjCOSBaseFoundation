@@ -25,6 +25,7 @@
       { @selector( NSRunLoop), MULLE_OBJC_NO_CATEGORYID },      // e3bb595b;NSRunLoop;;
       { @selector( NSString), @selector( CString) },      // 1994a171;NSString;cafc9ab8;CString
       { @selector( NSString), @selector( OSBase) },      // 1994a171;NSString;b8ece9a7;OSBase
+      { @selector( NSTask), @selector( Private) },      // 90ec29ba;NSTask;01f2cacd;Private
       { @selector( NSTask), @selector( System) },      // 90ec29ba;NSTask;f3184bc8;System
       { @selector( NSTask), MULLE_OBJC_NO_CATEGORYID },      // 90ec29ba;NSTask;;
       { @selector( NSTimer), @selector( NSRunLoop) },      // 37c6e578;NSTimer;e3bb595b;NSRunLoop

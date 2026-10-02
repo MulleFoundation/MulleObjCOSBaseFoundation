@@ -70,8 +70,27 @@
 }
 
 
+//
+// A child that is still running is let go here, never killed: `dealloc` has
+// not waited for one since it existed, and it must not start. mulle-spawn's
+// `close` would terminate the child -- `detach` is the call that lets it go.
+//
+// The price is the one detach documents: nothing will ever wait for that
+// process again, so on POSIX it becomes an orphan for init to reap and on
+// Windows its exit code is never collected.
+//
+// It goes first, before the ivars are released, because it is the only one of
+// them that is still holding something alive.
+//
 - (void) dealloc
 {
+   if( _taskHandle)
+   {
+      mulle_spawn_detach( (struct mulle_spawn_handle *) _taskHandle);
+      mulle_free( _taskHandle);
+      _taskHandle = NULL;
+   }
+
    [_standardError release];
    [_standardOutput release];
    [_standardInput release];
@@ -202,6 +221,152 @@
    if( ! _environment)
       return( [[NSProcessInfo processInfo] environment]);
    return( _environment);
+}
+
+
+/*
+ * What happens to the child once it is running. All of this lives here, and
+ * not in the platform categories, because there is nothing platform-specific
+ * left in it: `_taskHandle` is a mulle-spawn handle, which is the same object
+ * on every platform, and `_status` is spawn's own verdict. A platform is only
+ * ever asked for `launch`.
+ *
+ * It used to be written twice, once per category, and the two copies did not
+ * agree: `terminationReason` read a signal on one and an unconditional "exit"
+ * on the other, which is how a `terminate` came to look like a child that
+ * chose to exit 1 on Windows.
+ */
+- (BOOL) isRunning
+{
+   if( _status != _NSTaskIsRunning)
+      return( NO);
+
+   return( [self mulleCheckIfRunning]);
+}
+
+
+- (void) waitUntilExit
+{
+   struct mulle_spawn_result   result;
+
+   switch( _status)
+   {
+   default :
+      // it has been waited for, and waiting again would answer with a second
+      // fate for a child that only has one
+      break;
+
+   case _NSTaskIsIdle :
+      MulleObjCThrowInternalInconsistencyException( @"task not started");
+      break;
+
+   case _NSTaskIsRunning :
+      mulle_spawn_result_init( &result, NULL);
+
+      if( mulle_spawn_wait( _taskHandle, MULLE_SPAWN_NO_TIMEOUT, &result) == -1)
+         MulleObjCThrowErrnoException( @"could not wait for the task");
+
+      _terminationStatus = mulleNSTaskStatusFromResult( &result);
+      _status            = result.status;
+      break;
+   }
+}
+
+
+//
+// All four of these are no-ops on a task that is not running, which is what
+// they have always been. Whether the request reached the child is the answer
+// on the two that can report one: `suspend` and `resume` say so, so a child
+// that could not be stopped reports NO instead of claiming success.
+//
+- (void) terminate
+{
+   if( _status != _NSTaskIsRunning)
+      return;
+
+   mulle_spawn_terminate( (struct mulle_spawn_handle *) _taskHandle);
+}
+
+
+- (void) interrupt
+{
+   if( _status != _NSTaskIsRunning)
+      return;
+
+   mulle_spawn_interrupt( (struct mulle_spawn_handle *) _taskHandle);
+}
+
+
+- (BOOL) suspend
+{
+   if( _status != _NSTaskIsRunning)
+      return( NO);
+
+   return( mulle_spawn_suspend( (struct mulle_spawn_handle *) _taskHandle) == 0);
+}
+
+
+- (BOOL) resume
+{
+   if( _status != _NSTaskIsRunning)
+      return( NO);
+
+   return( mulle_spawn_resume( (struct mulle_spawn_handle *) _taskHandle) == 0);
+}
+
+
+- (NSTaskTerminationReason) terminationReason
+{
+   if( _status == _NSTaskIsIdle || _status == _NSTaskIsRunning)
+      MulleObjCThrowInternalInconsistencyException( @"task not terminated yet");
+
+   /*
+    * An exit is the only verdict that is an exit. A signal ended the child
+    * against its will, and so did mulle-spawn when the caller asked it to --
+    * and because the spawn verdict is read rather than translated, those two
+    * are one expression instead of a mapping per platform.
+    */
+   return( _status == mulle_spawn_exited
+           ? NSTaskTerminationReasonExit
+           : NSTaskTerminationReasonUncaughtSignal);
+}
+
+@end
+
+
+@implementation NSTask( Private)
+
+//
+// "Has it stopped by itself" -- the whole of what `isRunning` is built on. The
+// timeout is zero, so this reaps a child that has come back and leaves one that
+// has not, without waiting for the answer to change.
+//
+- (BOOL) mulleCheckIfRunning
+{
+   struct mulle_spawn_result   result;
+
+   switch( _status)
+   {
+   default :
+      // it has been asked before, and a child does not come back twice
+      break;
+
+   case _NSTaskIsIdle :
+      MulleObjCThrowInternalInconsistencyException( @"task not started");
+      break;
+
+   case _NSTaskIsRunning :
+      mulle_spawn_result_init( &result, NULL);
+
+      // zero seconds: "has it stopped by itself", and reap it if it has
+      if( mulle_spawn_wait( _taskHandle, 0.0, &result) != 1)
+         return( YES);   // still running, or nothing to ask about
+
+      _terminationStatus = mulleNSTaskStatusFromResult( &result);
+      _status            = result.status;
+      break;
+   }
+   return( NO);
 }
 
 @end

@@ -38,14 +38,37 @@
 #import "NSTask+System.h"
 
 // other files in this library
-#import "NSPipe.h"
-#import "NSFileHandle.h"
 #import "NSFileManager.h"
 #import "NSProcessInfo.h"
+#import "NSTask-Private.h"
 #import "NSString+CString.h"
 #import "NSString+OSBase.h"
 
-#include <signal.h>
+/*
+ * mulle-spawn arrives with mulle-core, which the Objective-C runtime brings
+ * into every project that can run this code. It is spelled out because nothing
+ * else in this file would tell a reader where `mulle_spawn_open` -- or the
+ * `_status` vocabulary of NSTask-Private.h -- is from.
+ */
+#include <mulle-spawn/mulle-spawn.h>
+
+/*
+ * The descriptors mulle-spawn hands back are file descriptors on POSIX and the
+ * CRT's own on Windows, where they are also spelled differently. This is the
+ * only place in this file that has to know that, which is the price of the
+ * orchestrator being one implementation instead of two.
+ */
+#ifdef _WIN32
+# include <io.h>
+# define _taskRead( fd, buf, n)    _read( fd, buf, n)
+# define _taskWrite( fd, buf, n)   _write( fd, buf, n)
+# define _taskClose( fd)           _close( fd)
+#else
+# include <unistd.h>
+# define _taskRead( fd, buf, n)    read( fd, buf, n)
+# define _taskWrite( fd, buf, n)   write( fd, buf, n)
+# define _taskClose( fd)           close( fd)
+#endif
 
 // #define DEBUG_IO
 
@@ -106,78 +129,214 @@ NSString   *NSTaskStandardErrorStringKey  = @"standardErrorString";
 struct thread_info
 {
    NSThread      *thread;
-   NSFileHandle  *fileHandle;
    NSData        *data;
+   int           descriptor;
 };
 
 
-static int   writeFileHandleDataAndClose( NSThread *thread, void *_info)
+/*
+ * Everything the child has to say, read to EOF. An error is not told apart
+ * from an EOF here because on a pipe they are the same thing: the child is
+ * gone, and nothing more is coming. A short read is not a reason to stop, and
+ * a `0` is.
+ */
+static NSData   *dataFromDescriptorToEOF( int descriptor)
 {
-   struct thread_info *info = _info;
+   NSMutableData   *data;
+   char            buffer[ 4096];
+   ssize_t         n;
 
-   [info->fileHandle mulleGainAccess];
+   data = [NSMutableData data];
+   for(;;)
+   {
+      n = _taskRead( descriptor, buffer, sizeof( buffer));
+      if( n <= 0)
+         break;
+
+      [data appendBytes:buffer
+                 length:(NSUInteger) n];
+   }
+   return( data);
+}
+
+
+/*
+ * The data is written in a thread of its own while the other end of that pipe
+ * is read in this one, which is the whole reason the thread exists: a child
+ * that answers more than a pipe holds would otherwise wait forever for a
+ * parent that is still waiting for it to answer.
+ *
+ * A write that comes back short is carried on with, and one that fails ends it
+ * -- a child that stopped reading its stdin is not an error to report, and by
+ * then there is nobody left to report it to.
+ *
+ * The chunks are bounded because the count these take is an `unsigned int` on
+ * Windows and a `size_t` on POSIX, and one bound that is right for both is
+ * simpler than one for each.
+ */
+static int   writeDescriptorAndClose( NSThread *thread, void *_info)
+{
+   struct thread_info   *info = _info;
+   const char           *bytes;
+   NSUInteger           length;
+   NSUInteger           want;
+   ssize_t              n;
+
    [info->data mulleGainAccess];
 
 #ifdef DEBUG_IO
    mulle_fprintf( stderr, "write data\n");
 #endif
-   [info->fileHandle writeData:info->data];
+   bytes  = [info->data bytes];
+   length = [info->data length];
+
+   while( length)
+   {
+      want = (length > 65536) ? 65536 : length;
+      n    = _taskWrite( info->descriptor, bytes, want);
+      if( n <= 0)
+         break;
+
+      bytes  += n;
+      length -= (NSUInteger) n;
+   }
 #ifdef DEBUG_IO
    mulle_fprintf( stderr, "close write\n");
 #endif
-   [info->fileHandle closeFile];
+   _taskClose( info->descriptor);
+
 #ifdef DEBUG_IO
    mulle_fprintf( stderr, "end write thread\n");
 #endif
    [info->data autorelease];
-   [info->fileHandle autorelease];
    return( 0);
 }
 
 
-static int   readFileHandleData( NSThread *thread, void *_info)
+static int   readDescriptorData( NSThread *thread, void *_info)
 {
-   struct thread_info *info = _info;
-
-   [info->fileHandle mulleGainAccess];
+   struct thread_info   *info = _info;
 
 #ifdef DEBUG_IO
    mulle_fprintf( stderr, "read err data\n");
 #endif
-   info->data = [[info->fileHandle readDataToEndOfFile] retain];
+   info->data = [dataFromDescriptorToEOF( info->descriptor) retain];
 #ifdef DEBUG_IO
    mulle_fprintf( stderr, "end read err thread\n");
 #endif
-   [info->fileHandle autorelease];
    [info->data mulleRelinquishAccess];
 
    return( 0);
 }
 
+
+/*
+ * An `NSDictionary` as the envp mulle-spawn takes, in one allocation: the NULL
+ * terminated array of pointers first, then a copy of every "NAME=VALUE"
+ * behind it. What the caller has to `mulle_free` comes back in `allocation`.
+ *
+ * A nil dictionary answers NULL, which is spawn's way of saying "the parent's
+ * environment, unchanged" -- so the difference that matters survives: nil is
+ * the inherited environment, @{} is no environment at all.
+ *
+ * This used to be written out twice, once in each launch; it is one conversion
+ * wanted by three callers (the two launches and the orchestrator below), so it
+ * is declared in NSTask-Private.h and written once here.
+ */
+MULLE_OBJC_OS_BASE_FOUNDATION_GLOBAL
+char   **mulleNSTaskEnvironmentStrings( NSDictionary *environment, void **allocation)
+{
+   NSArray      *keys;
+   NSString     *key;
+   NSString     *value;
+   char         **envp;
+   char         *s;
+   char         *q;
+   size_t       len;
+   size_t       n;
+   size_t       i;
+
+   *allocation = NULL;
+   if( ! environment)
+      return( NULL);
+
+   keys = [environment allKeys];
+   n    = [keys count];
+
+   // the array, then "NAME=VALUE" and its terminator for each pair
+   len = (n + 1) * sizeof( char *) + 1;
+   for( i = 0; i < n; i++)
+   {
+      key   = [keys objectAtIndex:i];
+      value = [environment objectForKey:key];
+      len  += strlen( [key UTF8String]) + 1 + strlen( [value UTF8String]) + 1;
+   }
+
+   envp = mulle_malloc( len);
+   s    = (char *) &envp[ n + 1];
+
+   for( i = 0; i < n; i++)
+   {
+      key   = [keys objectAtIndex:i];
+      value = [environment objectForKey:key];
+
+      envp[ i] = s;
+
+      for( q = (char *) [key UTF8String]; *q; )
+         *s++ = *q++;
+      *s++ = '=';
+      for( q = (char *) [value UTF8String]; *q; )
+         *s++ = *q++;
+      *s++ = 0;
+   }
+   envp[ n] = NULL;
+
+   *allocation = envp;
+   return( envp);
+}
+
 // @selector( mulleDataSystemCallWithArguments:environment:workingDirectory:standardInputData:options:)
 @implementation NSTask( System)
 
+/*
+ * Create a child, talk to it on all three streams, wait for it, and hand back
+ * what it said. This is the whole of the orchestration, and it used to be an
+ * NSTask: two NSPipes, three `setStandard...:` calls, a launch, a wait, and the
+ * child's output picked back up through NSFileHandle objects.
+ *
+ * All of that was there to hand descriptors to a `fork()` that is not there
+ * anymore. mulle-spawn makes the pipes, keeps the child and hands back the
+ * three descriptors, so what is left here is the part that is actually
+ * Objective-C: an argv from the arguments, an envp from the environment, and a
+ * dictionary from what came back.
+ *
+ * The descriptors are read and written the same way on both platforms --
+ * `read`/`write` on POSIX, the CRT's own on Windows -- which is what lets one
+ * implementation stand where there would otherwise be two.
+ */
 + (NSDictionary *) mulleDataSystemCallWithArguments:(NSArray *) argv
                                         environment:(NSDictionary *) environment
                                    workingDirectory:(NSString *) dir
                                   standardInputData:(NSData *) inputData
                                             options:(NSTaskSystemOptions) options
 {
-   int                  rval;
-   NSArray              *arguments;
-   NSFileHandle         *file;
-   NSInteger            argc;
-   NSPipe               *stdoutPipe;
-   NSPipe               *stdinPipe;
-   NSPipe               *stderrPipe;
-   NSString             *absolute;
-   NSString             *executablePath;
-   NSString             *envPATH;
-   NSTask               *task;
-   NSMutableDictionary  *merged;
-   NSFileManager        *fileManager;
-   id                   exception;
-   struct thread_info   info[ 3] = { 0 };
+   struct mulle_spawn_handle    handle;
+   struct mulle_spawn_options   spawnOptions;
+   struct mulle_spawn_result    result;
+   struct thread_info           info[ 3] = { 0 };
+   NSMutableDictionary          *merged;
+   NSFileManager                *fileManager;
+   NSString                     *absolute;
+   NSString                     *envPATH;
+   NSString                     *executablePath;
+   char                         **args;
+   char                         **envp;
+   void                         *envAllocation;
+   NSUInteger                   argc;
+   NSUInteger                   i;
+   int                          err;
+   int                          rval;
+   id                           exception;
 
    argc = [argv count];
    if( ! argc)
@@ -188,26 +347,32 @@ static int   readFileHandleData( NSThread *thread, void *_info)
    exception = 0;
    rval      = -1;
 
+   /*
+    * `environment` is *added* to this process's own rather than replacing it,
+    * which is the opposite of what a task's `setEnvironment:` means -- the
+    * header says so, and the difference is on purpose.
+    */
+   merged = nil;
+   if( environment)
+   {
+      merged = [NSMutableDictionary dictionaryWithDictionary:[[NSProcessInfo processInfo] environment]];
+      [merged addEntriesFromDictionary:environment];
+   }
+
+   mulle_spawn_handle_init( &handle);
+
    @autoreleasepool
    {
       @try
       {
-         task       = [[NSTask new] autorelease];
-         stdinPipe  = (options & NSTaskSystemSendStandardInput)     ? [NSPipe pipe] : nil;
-         stdoutPipe = (options & NSTaskSystemReceiveStandardOutput) ? [NSPipe pipe] : nil;
-         stderrPipe = (options & NSTaskSystemReceiveStandardError)  ? [NSPipe pipe] : nil;
-
          executablePath = [argv objectAtIndex:0];
-         envPATH        = nil;
+         envPATH        = merged ? [merged :@"PATH"] : nil;
 
-         if( environment)
-         {
-            merged = [NSMutableDictionary dictionaryWithDictionary:[[NSProcessInfo processInfo] environment]];
-            [merged addEntriesFromDictionary:environment];
-            [task setEnvironment:merged];
-            envPATH = [merged :@"PATH"];
-         }
-
+         //
+         // The program is resolved here rather than left to the launch: a
+         // caller who named a program that is not there is owed the name of
+         // it, and the child is looked up in the PATH it is about to receive.
+         //
 #ifdef _WIN32
          if( ! [executablePath isAbsolutePath]
              && ! ([executablePath length] >= 2
@@ -226,63 +391,106 @@ static int   readFileHandleData( NSThread *thread, void *_info)
          if( ! absolute)
             [NSException raise:NSInvalidArgumentException
                format:@"executable \"%@\" must be absolute or in PATH", executablePath];
-         [task setLaunchPath:absolute];
 
-         if( [dir length])
-            [task setCurrentDirectoryPath:dir];
+         //
+         // argv, with `argv[ 0]` in the form the child's own platform means
+         // by a path: a Foundation path is `/c/...` on Windows, which is not a
+         // path any Win32 program would know. The working directory below goes
+         // through the same conversion, for the same reason.
+         //
+         args        = mulle_malloc( (argc + 1) * sizeof( char *));
+         args[ 0]    = (char *) [absolute fileSystemRepresentation];
 
-         arguments = [argv subarrayWithRange:NSRangeMake( 1, argc - 1)];
-         [task setArguments:arguments];
-         [task setStandardInput:stdinPipe];
-         [task setStandardOutput:stdoutPipe];
-         [task setStandardError:stderrPipe];
-         [task launch];
+         for( i = 1; i < argc; i++)
+            args[ i] = (char *) [[argv objectAtIndex:i] UTF8String];
+         args[ argc] = NULL;
 
-         if( stdinPipe)
+         envp = mulleNSTaskEnvironmentStrings( merged, &envAllocation);
+
+         mulle_spawn_options_init( &spawnOptions);
+         spawnOptions.env       = envp;
+         spawnOptions.directory = [dir length] ? [dir fileSystemRepresentation] : NULL;
+
+         //
+         // Only the streams that were asked for are replaced; the others are
+         // this process's own, untouched.
+         //
+         spawnOptions.in_mode  = (options & NSTaskSystemSendStandardInput)
+                                 ? MULLE_SPAWN_PIPE : MULLE_SPAWN_INHERIT;
+         spawnOptions.out_mode = (options & NSTaskSystemReceiveStandardOutput)
+                                 ? MULLE_SPAWN_PIPE : MULLE_SPAWN_INHERIT;
+         spawnOptions.err_mode = (options & NSTaskSystemReceiveStandardError)
+                                 ? MULLE_SPAWN_PIPE : MULLE_SPAWN_INHERIT;
+
+         //
+         // `open` waits for the child to reach its exec, so a 0 here means the
+         // program really is running, and a -1 means no child was created at
+         // all, with `errno` saying why. A launch that did not happen used to
+         // come back as a task that had "launched" and "exited 127".
+         //
+         if( mulle_spawn_open_with_options( &handle, args, &spawnOptions) == -1)
+         {
+            err = errno;
+            mulle_free( envAllocation);
+            mulle_free( args);
+
+            errno = err;
+            MulleObjCThrowErrnoException( @"could not launch \"%@\"", executablePath);
+         }
+
+         mulle_free( envAllocation);
+         mulle_free( args);
+
+         //
+         // stdin is written in a thread of its own, stderr is read in another,
+         // and stdout is read here. Three streams a child can fill, so only one
+         // of them may block this thread -- and it is the one this thread is
+         // waiting for anyway.
+         //
+         if( inputData && handle.in >= 0)
          {
             info[ 0].data       = [inputData copy];
-            [info[0].data mulleRelinquishAccess];
+            [info[ 0].data mulleRelinquishAccess];
 
-            info[ 0].fileHandle = [[stdinPipe fileHandleForWriting] retain];
-            [info[0].fileHandle mulleRelinquishAccess];
-
-            info[ 0].thread     = [[[NSThread alloc] mulleInitWithFunction:writeFileHandleDataAndClose
+            info[ 0].descriptor = handle.in;
+            info[ 0].thread     = [[[NSThread alloc] mulleInitWithFunction:writeDescriptorAndClose
                                                                   argument:&info[ 0]] autorelease];
             [info[ 0].thread mulleStart];
          }
-
-   //         info[ 1].data       = nil
-   //         info[ 1].fileHandle = [[stdinPipe fileHandleForReading] retain]
-   //         info[ 1].thread     = [NSThread mulleInitWithFunction:readFileHandleData
-   //                                                      argument:&info[ 1]];
-   //         [info[ 1].thread mulleStartUndetached];
-
-         if( stderrPipe)
+         else
          {
-            info[ 2].data       = nil;
-            info[ 2].fileHandle = [[stderrPipe fileHandleForReading] retain];
-            [info[2].fileHandle mulleRelinquishAccess];
-            info[ 2].thread     = [[[NSThread alloc] mulleInitWithFunction:readFileHandleData
+            //
+            // Nothing to write is not nothing to do: the child was given a
+            // pipe for its stdin, and this end of it is what has to be closed
+            // for the child to read EOF. Otherwise it waits forever for input
+            // that is never coming.
+            //
+            if( handle.in >= 0)
+            {
+               _taskClose( handle.in);
+               handle.in = -1;
+            }
+         }
+
+         if( handle.err >= 0)
+         {
+            info[ 2].descriptor = handle.err;
+            info[ 2].thread     = [[[NSThread alloc] mulleInitWithFunction:readDescriptorData
                                                                   argument:&info[ 2]] autorelease];
             [info[ 2].thread mulleStart];
          }
 
-         if( stdoutPipe)
-         {
-         // save a thread by running stdout reader in this thread
-            file = [stdoutPipe fileHandleForReading];
-#ifdef DEBUG_IO
-            mulle_fprintf( stderr, "start read\n");
-#endif
-            info[ 1].data = [[file readDataToEndOfFile] retain];
-#ifdef DEBUG_IO
-            mulle_fprintf( stderr, "close read\n");
-#endif
-         }
+         // saving a thread by running the stdout reader in this one
+         if( handle.out >= 0)
+            info[ 1].data = [dataFromDescriptorToEOF( handle.out) retain];
+
 #ifdef DEBUG_IO
          mulle_fprintf( stderr, "wait\n");
 #endif
-         [task waitUntilExit];
+         mulle_spawn_result_init( &result, NULL);
+         rval = mulle_spawn_wait( &handle, MULLE_SPAWN_NO_TIMEOUT, &result);
+         err  = errno;
+
 #ifdef DEBUG_IO
          mulle_fprintf( stderr, "join stderr\n");
 #endif
@@ -291,9 +499,32 @@ static int   readFileHandleData( NSThread *thread, void *_info)
 #ifdef DEBUG_IO
          mulle_fprintf( stderr, "join stdin\n");
 #endif
-         [info[ 0].thread mulleJoin];  // not really needed
+         [info[ 0].thread mulleJoin];
 
-         rval = [task terminationStatus];
+         //
+         // The writer thread closed this end of the child's stdin on its way
+         // out, so it must not be closed a second time: descriptor numbers get
+         // handed out again, and the second close would land on somebody
+         // else's.
+         //
+         handle.in = -1;
+
+         if( rval != 1)
+         {
+            mulle_spawn_close( &handle, NULL);
+
+            errno = err;
+            MulleObjCThrowErrnoException( @"could not wait for the child");
+         }
+
+         rval = mulleNSTaskStatusFromResult( &result);
+
+         //
+         // The child has been waited for, so this closes the two descriptors
+         // that are left and does nothing else: there is no child left to
+         // terminate.
+         //
+         mulle_spawn_close( &handle, NULL);
       }
       @catch( id e)
       {

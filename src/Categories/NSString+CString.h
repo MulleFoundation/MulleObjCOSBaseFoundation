@@ -35,6 +35,14 @@
 #import "import.h"
 
 
+// Maps a codeset name as returned by nl_langinfo( CODESET), or the platform
+// equivalent, onto an encoding this library can actually convert. Unknown
+// codesets answer NSUTF8StringEncoding: the lossy C string conversion can
+// then still produce a string instead of raising. Please note that plain
+// ASCII is also reported as UTF-8, see the implementation for the reasoning.
+NSStringEncoding   mulle_cstring_encoding_for_codeset( char *codeset);
+
+
 //TODO : rename to CStringCharacters where its not known to 
 //       be \0 terminated
 

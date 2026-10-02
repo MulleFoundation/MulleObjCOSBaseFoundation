@@ -287,21 +287,21 @@ export MULLE_CONTAINER_BRANCH="prerelease"
 
 
 #
-# mulle-objc-list nodetype: ${MULLE_OBJC_LIST_NODETYPE:-tar}
+# mulle-objc-tools nodetype: ${MULLE_OBJC_TOOLS_NODETYPE:-tar}
 #
-export MULLE_OBJC_LIST_NODETYPE="git"
+export MULLE_OBJC_TOOLS_NODETYPE="git"
 
 
 #
-# mulle-objc-list url: ${MULLE_OBJC_LIST_URL:-https://github.com/mulle-objc/mulle-objc-list/archive/${MULLE_TAG}.tar.gz}
+# mulle-objc-tools url: ${MULLE_OBJC_TOOLS_URL:-https://github.com/mulle-objc/mulle-objc-tools/archive/${MULLE_TAG}.tar.gz}
 #
-export MULLE_OBJC_LIST_URL="https://github.com/mulle-objc/mulle-objc-list.git"
+export MULLE_OBJC_TOOLS_URL="https://github.com/mulle-objc/mulle-objc-tools.git"
 
 
 #
-# mulle-objc-list branch: ${MULLE_OBJC_LIST_BRANCH}
+# mulle-objc-tools branch: ${MULLE_OBJC_TOOLS_BRANCH}
 #
-export MULLE_OBJC_LIST_BRANCH="prerelease"
+export MULLE_OBJC_TOOLS_BRANCH="prerelease"
 
 
 #
