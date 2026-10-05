@@ -6,6 +6,7 @@
    "license" : "BSD-3-Clause",
    "repo" : "MulleFoundation/MulleObjCOSBaseFoundation",
    "src" : [
+      "asset/dox/api/toc/index.md",
       "src/Categories/NSArray+OSBase-Private.h",
       "src/Categories/NSArray+OSBase-Private.m",
       "src/Categories/NSArray+OSBase.h",
